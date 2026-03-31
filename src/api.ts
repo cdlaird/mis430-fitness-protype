@@ -48,8 +48,16 @@ export type Explanation = {
   created_at: string
 }
 
+const API_BASE_URL =
+  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, '') || ''
+
+function apiUrl(path: string) {
+  if (!API_BASE_URL) return path
+  return `${API_BASE_URL}${path}`
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     ...init,
     headers: {
       'Content-Type': 'application/json',
