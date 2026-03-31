@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Api, type Appeal, type AutomatedDecision, type User, type UserRole } from './api'
+import { Api, setApiRetryListener, type Appeal, type AutomatedDecision, type User, type UserRole } from './api'
 
 type Page =
   | { name: 'login' }
@@ -76,6 +76,13 @@ export default function App() {
     Api.health()
       .then((h) => setMode(h.mode))
       .catch(() => setMode('unknown'))
+  }, [])
+
+  useEffect(() => {
+    setApiRetryListener((message) => {
+      if (message) setError(message)
+    })
+    return () => setApiRetryListener(null)
   }, [])
 
   useEffect(() => {

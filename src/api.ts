@@ -51,25 +51,69 @@ export type Explanation = {
 const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, '') || ''
 
+let apiRetryListener: ((message: string | null) => void) | null = null
+
+export function setApiRetryListener(listener: ((message: string | null) => void) | null) {
+  apiRetryListener = listener
+}
+
 function apiUrl(path: string) {
   if (!API_BASE_URL) return path
   return `${API_BASE_URL}${path}`
 }
 
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(apiUrl(path), {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers || {}),
-    },
-  })
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`API ${res.status}: ${text || res.statusText}`)
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const retryDelaysMs = [10000, 20000]
+
+  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    try {
+      const res = await fetch(apiUrl(path), {
+        ...init,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(init?.headers || {}),
+        },
+      })
+
+      const shouldRetryByStatus = [502, 503, 504].includes(res.status)
+      if (!res.ok) {
+        if (shouldRetryByStatus && attempt < retryDelaysMs.length) {
+          const nextDelay = retryDelaysMs[attempt]
+          apiRetryListener?.(`Server is waking up, retrying in ${Math.round(nextDelay / 1000)}–20s...`)
+          await wait(nextDelay)
+          continue
+        }
+        apiRetryListener?.(null)
+        const text = await res.text().catch(() => '')
+        throw new Error(`API ${res.status}: ${text || res.statusText}`)
+      }
+
+      apiRetryListener?.(null)
+      return (await res.json()) as T
+    } catch (err: any) {
+      const isNetworkError = String(err?.message || '').toLowerCase().includes('failed to fetch')
+      if (isNetworkError && attempt < retryDelaysMs.length) {
+        const nextDelay = retryDelaysMs[attempt]
+        apiRetryListener?.(`Server is waking up, retrying in ${Math.round(nextDelay / 1000)}–20s...`)
+        await wait(nextDelay)
+        continue
+      }
+
+      apiRetryListener?.(null)
+      if (isNetworkError) {
+        throw new Error('Server is waking up. Please wait 10–20 seconds and try again.')
+      }
+      throw err
+    }
   }
-  return (await res.json()) as T
+
+  // Safety fallback.
+  apiRetryListener?.(null)
+  throw new Error('Server is waking up. Please wait 10–20 seconds and try again.')
 }
 
 export function authHeader(token: string | null): Record<string, string> {
