@@ -1,0 +1,125 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  athlete
+  coach
+}
+
+enum DecisionType {
+  queue_position
+  workout_recommendation
+  plan_recommendation
+  nudge
+  check_in
+}
+
+enum AppealStatus {
+  submitted
+  assigned
+  resolved
+}
+
+enum TransparencyTier {
+  basic
+  enhanced
+}
+
+enum FairnessConcernType {
+  body_metrics
+  demographic_assumptions
+  other
+}
+
+model User {
+  user_id       BigInt    @id @default(autoincrement())
+  role          UserRole
+  email         String    @unique
+  display_name  String
+
+  -- For mock payments: track paid/unpaid directly.
+  is_paid    Boolean   @default(false)
+  paid_until DateTime?
+
+  -- Prototype auth: store a password hash only if you decide to use real login later.
+  password_hash String?
+
+  created_at DateTime @default(now())
+
+  automated_decisions AutomatedDecision[] @relation("decisionsByAthlete")
+  athlete_appeals     Appeal[]           @relation("athleteAppeals")
+  coach_appeals       Appeal[]           @relation("coachAppeals")
+  explanations        Explanation[]
+}
+
+model AutomatedDecision {
+  decision_id   BigInt      @id @default(autoincrement())
+
+  athlete_user_id BigInt
+  athlete         User       @relation("decisionsByAthlete", fields: [athlete_user_id], references: [user_id])
+
+  decision_type   DecisionType
+  queue_position  Int?
+  decision_payload Json?
+
+  created_at DateTime @default(now())
+
+  appeals Appeal[]
+  fairness_notes FairnessNote[]
+}
+
+model Appeal {
+  appeal_id   BigInt       @id @default(autoincrement())
+
+  athlete_user_id BigInt
+  athlete         User      @relation("athleteAppeals", fields: [athlete_user_id], references: [user_id])
+
+  decision_id BigInt
+  decision     AutomatedDecision @relation(fields: [decision_id], references: [decision_id])
+
+  appeal_content String
+  status          AppealStatus @default(submitted)
+
+  assigned_coach_user_id BigInt?
+  assignedCoach          User?     @relation("coachAppeals", fields: [assigned_coach_user_id], references: [user_id])
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  explanation Explanation?
+}
+
+model Explanation {
+  explanation_id BigInt  @id @default(autoincrement())
+
+  appeal_id BigInt @unique
+  appeal    Appeal  @relation(fields: [appeal_id], references: [appeal_id])
+
+  coach_user_id BigInt
+  coach         User   @relation(fields: [coach_user_id], references: [user_id])
+
+  transparency_tier    TransparencyTier @default(basic)
+  explanation_content  String
+
+  created_at DateTime @default(now())
+}
+
+model FairnessNote {
+  fairness_note_id BigInt @id @default(autoincrement())
+
+  decision_id BigInt
+  decision    AutomatedDecision @relation(fields: [decision_id], references: [decision_id])
+
+  concern_type     FairnessConcernType
+  concern_summary  String
+  mitigation_summary String?
+
+  created_at DateTime @default(now())
+}
+
