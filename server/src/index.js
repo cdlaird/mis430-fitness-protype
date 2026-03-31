@@ -9,9 +9,19 @@ dotenv.config()
 const app = express()
 app.use(express.json())
 
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'https://dashing-gumption-21265d.netlify.app',
+]
+
 app.use(
   cors({
-    origin: ['http://localhost:5173', 'http://localhost:5174'],
+    origin(origin, callback) {
+      // Allow server-to-server/no-origin tools and approved browser origins.
+      if (!origin || allowedOrigins.includes(origin)) return callback(null, true)
+      return callback(new Error('CORS not allowed from this origin'))
+    },
     credentials: false,
   }),
 )
